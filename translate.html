@@ -7,8 +7,49 @@ body {
   font-size: 0.8rem;
 }
 
+#tabs {
+  display: inline-flex;
+}
+.tab[active="1"] {
+  background-color: #7F9CCB;
+  color: #000000;
+}
+
+.tab {
+  background-color: #CDCDCD;
+  color: #8A8A8A;
+  padding: 5px 10px;
+  border: 1px ridge black;
+  border-bottom: 0;
+  border-top-left-radius: 5px;
+  border-top-right-radius: 5px;
+  height: auto;
+  margin: 0;
+  cursor: pointer;
+}
+
+.panel[active="1"] {
+  display: block;
+  border: 1px solid black;
+}
+
+.panel {
+  display: none;
+  padding: 16px;
+  border-top-right-radius: 5px;
+  border-bottom-right-radius: 5px;
+  border-bottom-left-radius: 5px;
+  box-shadow: 4px 4px #EEEEEE;
+  width: 360px;
+}
+
+div.inactive {
+  display: none;
+}
+
 label#read-file:hover,
 label#translate:hover,
+label#read-coords:hover,
 label[for="file-input"]:hover {
   background-color: #2D5BA3;
   color: white;
@@ -30,6 +71,8 @@ label[for="file-input"]:hover {
 
 label#translate.disabled,
 label#translate.disabled:hover,
+label#read-coords.disabled:hover,
+label#read-coords.disabled,
 label#read-file.disabled,
 label#read-file.disabled:hover {
   background-color: #CDCDCD;
@@ -55,6 +98,7 @@ label {
 
 input[type=file] {
   padding: 8px;
+  width: 8px;
   opacity: 0;
 }
 
@@ -82,6 +126,7 @@ tr.surplus {
 
 #proj-div {
   display: none;
+  margin-top: 16px;
 }
 
 #translate {
@@ -92,29 +137,41 @@ tr.surplus {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.7.5/proj4.js" integrity="sha512-MMmVaQGDVI3Wouc5zT5G7k/snN9gPqquIhZsHgIIHVDlRgYTYGxrwu6w482iIhAq8n5R6+pcBgpGgxFFBz7rZA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <body>
 <div>
+<div id="tabs">
+  <button id="file-tab">File</button>
+  <button id="manual-tab">Manual</button>
+</div>
+<div id="panels">
   <div>
-    <label for="file-input">Select file</label>
-    <span id="filename">No file selected...</label>
-    <input id="file-input" type="file">
+    <div>
+      <label for="file-input">Select file</label>
+      <span id="filename">No file selected...</label>
+      <input id="file-input" type="file">
+    </div>
+    <div>
+     <label for="separator">Separator</label>
+     <select id="separator">
+       <option selected="true" disabled="true" value="default">Choose separator...</option>
+     </select>
+     <p><label id="read-file" class="disabled">Read file</label></p>
+    </div>
   </div>
   <div>
-   <label for="separator">Separator</label>
-   <select id="separator">
-     <option selected="true" disabled="true" value="default">Choose separator...</option>
-   </select>
+    <textarea id="coord-input" placeholder="One comma, space, or tab separated coordinate pair per line..." rows="6" cols="36"></textarea>
+    <div><label id="read-coords" for="coord-input" class="disabled">Read coordinates</label></div>
   </div>
+</div> <!-- panels -->
   <div id="proj-div">
-   <label>Source projection</label>
-   <select id="src-proj">
-     <option selected="true" disabled="true">Choose projection...</option>
-   </select>
-   <label>Target projection</label>
-   <select id="dest-proj">
-     <option selected="true" disabled="true" value="default">Choose projection...</option>
-   </select>
+    <label>Source projection</label>
+    <select id="src-proj">
+      <option selected="true" disabled="true">Choose projection...</option>
+    </select>
+    <label>Target projection</label>
+    <select id="dest-proj">
+      <option selected="true" disabled="true" value="default">Choose projection...</option>
+    </select>
   </div>
   <div>
-    <label id="read-file" class="disabled">Read file</label>
     <label id="translate" class="disabled">Translate</label>
   </div>
   <div id="coords">
@@ -158,6 +215,7 @@ const coordDisplayLimit = 32000;
 const inTableId = "order-table";
 const outTableId = "preview-table";
 const reader = new FileReader();
+let url = null; // ObjectURL for coord download
 let srcHead = null;
 let prevHead = null;
 let inCoords = null;
@@ -169,8 +227,24 @@ const srcProj = document.getElementById("src-proj");
 const destProj = document.getElementById("dest-proj");
 const readBtn = document.getElementById("read-file");
 const translateBtn = document.getElementById("translate");
+const coordInput = document.getElementById("coord-input");
+const coordReadBtn = document.getElementById("read-coords");
 
+
+const tabs = [...document.getElementById("tabs").children];
+const panels = [...document.getElementById("panels").children];
+
+for(const [i, tab] of tabs.entries()){
+    tab.classList.add("tab");
+    panels[i].classList.add("panel");
+}
+activateTab(0);
+tabs[0].parentElement.addEventListener("click", tabClick);
+
+coordInput.addEventListener("input", checkCoordReadStatus);
+coordReadBtn.addEventListener("click", readCoordInput);
 finp.addEventListener("change", fileSelected);
+
 let frag = document.createDocumentFragment();
 for(const sep of separators){
     let opt = document.createElement("option");
@@ -220,6 +294,13 @@ function readFile(e){
     translateBtn.style.display = "inline-block";
 }
 
+function readCoordInput(e){
+    inCoords = parseFile(coordInput.value.replaceAll(" ", "\t").replaceAll(",", "\t") + "\n");
+    makeInCoordsTable(inCoords);
+    srcProj.parentElement.style.display = "block";
+    translateBtn.style.display = "inline-block";
+}
+
 function checkReadFileReadyStatus(e){
     if(finp.files.length > 0 && separator.value != "default")
         readBtn.classList.remove("disabled");
@@ -234,6 +315,14 @@ function checkTranslateReadyStatus(e){
     }
     if(srcProj.value != "default" && destProj.value != "default")
         translateBtn.classList.remove("disabled");
+}
+
+function checkCoordReadStatus(e){
+    if(this.value === "" || this.value.length < 3){
+        this.labels[0].classList.add("disabled");
+    }else{
+        this.labels[0].classList.remove("disabled");
+    }
 }
 
 function parseFile(raw){
@@ -255,9 +344,25 @@ function parseFile(raw){
     return inCoords;
 }
 
+function tabClick(e){
+    const idx = tabs.indexOf(e.target);
+    activateTab(idx);
+}
+
+function activateTab(idx){
+    for(let i=0; i<tabs.length; i++){
+        const isActive = i === idx ? 1 : 0;
+        tabs[i].setAttribute("active", isActive);
+        panels[i].setAttribute("active", isActive);
+    }
+}
+
 function makeInCoordsTable(inCoords){
-    let orderTable = document.createElement("table");
-    orderTable.id = inTableId;
+    let orderTable = document.getElementById(inTableId);
+    if(!orderTable){
+        orderTable = document.createElement("table");
+        orderTable.id = inTableId;
+    }
     orderTable.innerHTML = `
       <caption>Input coordinates</caption>
       <thead><tr><th class="x in-head">x</th><th class="y in-head">y</th></tr></thead>
@@ -292,6 +397,10 @@ function makeInCoordsTable(inCoords){
 
     orderTable.querySelector("tbody").append(frag);
     document.getElementById("left").append(orderTable);
+    let previewTable = document.getElementById(outTableId);
+    if(previewTable){
+        previewTable.remove();
+    }
 }
 
 function makeOutput(e){
@@ -303,10 +412,14 @@ function makeOutput(e){
 
 function makeOutCoordsTable(outCoords){
     const coordData = new Blob([outCoords.join('\n').replaceAll(',',separator.value)], {type: "text/plain"});
-    const url = URL.createObjectURL(coordData);
+    if(url){
+        URL.revokeObjectURL(url);
+    }
+    url = URL.createObjectURL(coordData);
     const link = document.createElement("a");
+    let filename = finp.files.length > 0 ? finp.files[0].name : "coordinates.txt";
     link.href = url;
-    link.download = `${destProj.value.replace(":","")}_${finp.files[0].name}`;
+    link.download = `${destProj.value.replace(":","")}_${filename}`;
     link.textContent = "Output coordinates";
 
     let previewTable = document.getElementById(outTableId);
@@ -356,6 +469,9 @@ function translateCoords(inCoords){
     return outCoords;
 }
 
+/*  Coordinate orientation headers
+ *  drag events handlers
+ */
 function handleDragStart(e){
     this.style.opacity = 0.4;
     srcHead = this.cloneNode(true);
