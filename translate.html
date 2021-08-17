@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<meta charset="UTF-8">
+<html lang="en">
+<head><link rel="icon" href="data:,"></head>
+<style>
+body {
+  font-size: 0.8rem;
+}
+
+label#read-file:hover,
+label#translate:hover,
+label[for="file-input"]:hover {
+  background-color: #2D5BA3;
+  color: white;
+  cursor: pointer;
+}
+.in-head {
+  background-color: #7F9CCB;
+  padding: 5px 10px;
+  border-radius: 5px;
+  border: 1px ridge black;
+  height: auto;
+  margin: 2px 0;
+  cursor: grab;
+}
+
+.in-head::after {
+  content: " ⇄";
+}
+
+label#translate.disabled,
+label#translate.disabled:hover,
+label#read-file.disabled,
+label#read-file.disabled:hover {
+  background-color: #CDCDCD;
+  color: #8A8A8A;
+  cursor: not-allowed;
+}
+
+th {
+  padding: 5px 10px;
+  height: auto;
+  margin: 2px 0;
+}
+
+label {
+  background-color: #7F9CCB;
+  padding: 5px 10px;
+  border-radius: 5px;
+  border: 1px ridge black;
+  height: auto;
+  margin: 2px 0;
+  display: inline-block;
+}
+
+input[type=file] {
+  padding: 8px;
+  opacity: 0;
+}
+
+td {
+  padding: 0px 12px;
+}
+
+.column {
+  float: left;
+  padding: 24px 40px;
+}
+
+th.over {
+  border: 2px dashed green;
+  background-color: #B0F0B0;
+}
+
+tr.surplus {
+  text-align: center;
+}
+
+#filename {
+  display: inline-block;
+}
+
+#proj-div {
+  display: none;
+}
+
+#translate {
+  display: none;
+}
+
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.7.5/proj4.js" integrity="sha512-MMmVaQGDVI3Wouc5zT5G7k/snN9gPqquIhZsHgIIHVDlRgYTYGxrwu6w482iIhAq8n5R6+pcBgpGgxFFBz7rZA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<body>
+<div>
+  <div>
+    <label for="file-input">Select file</label>
+    <span id="filename">No file selected...</label>
+    <input id="file-input" type="file">
+  </div>
+  <div>
+   <label for="separator">Separator</label>
+   <select id="separator">
+     <option selected="true" disabled="true" value="default">Choose separator...</option>
+   </select>
+  </div>
+  <div id="proj-div">
+   <label>Source projection</label>
+   <select id="src-proj">
+     <option selected="true" disabled="true">Choose projection...</option>
+   </select>
+   <label>Target projection</label>
+   <select id="dest-proj">
+     <option selected="true" disabled="true" value="default">Choose projection...</option>
+   </select>
+  </div>
+  <div>
+    <label id="read-file" class="disabled">Read file</label>
+    <label id="translate" class="disabled">Translate</label>
+  </div>
+  <div id="coords">
+    <div id="left" class="column"></div>
+    <div id="right" class="column"></div>
+  </div>
+</div>
+<script>
+const separators = [
+    [ "comma", "," ],
+    [ "tab", "\t"],
+    [ "space", " "],
+    [ "semicolon", ";"],
+    [ "colon", ":"],
+    [ "pipe", "|"],
+    [ "underscore", "_"]
+
+];
+
+const projections = [
+    [ "EPSG:4326", "EPSG:4326" ],
+    [ "Web Mercator/EPSG:3857", "EPSG:3857" ],
+    [ "OSGB36/EPSG:27700", "EPSG:27700" ],
+];
+
+/* Add 27700 definition. 4326 and 3857 are predefined */
+proj4.defs(
+  'EPSG:27700',
+  '+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 ' +
+    '+x_0=400000 +y_0=-100000 +ellps=airy ' +
+    '+towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.489 ' +
+    '+units=m +no_defs'
+);
+
+/* Browser display of coord rows is limited to
+ * this value, with remainder noted at foot of
+ * display.  Does not affect content of coord
+ * download after translation.
+ */
+const coordDisplayLimit = 32000;
+const inTableId = "order-table";
+const outTableId = "preview-table";
+const reader = new FileReader();
+let srcHead = null;
+let prevHead = null;
+let inCoords = null;
+
+const finp = document.getElementById("file-input");
+const filenameSpan = document.getElementById("filename");
+const separator = document.getElementById("separator");
+const srcProj = document.getElementById("src-proj");
+const destProj = document.getElementById("dest-proj");
+const readBtn = document.getElementById("read-file");
+const translateBtn = document.getElementById("translate");
+
+finp.addEventListener("change", fileSelected);
+let frag = document.createDocumentFragment();
+for(const sep of separators){
+    let opt = document.createElement("option");
+    opt.classList.add("separator-option");
+    [opt.textContent, opt.value] = sep;
+    frag.append(opt);
+}
+separator.append(frag);
+
+for(const projection of projections){
+    let opt = document.createElement("option");
+    opt.classList.add("projection-option");
+    [opt.textContent, opt.value] = projection;
+    frag.append(opt);
+}
+srcProj.append(frag.cloneNode(true));
+destProj.append(frag);
+srcProj.addEventListener("change", checkTranslateReadyStatus);
+destProj.addEventListener("change", checkTranslateReadyStatus);
+
+reader.addEventListener("load", (e) =>{
+    inCoords = parseFile(e.target.result);
+    makeInCoordsTable(inCoords);
+});
+
+separator.addEventListener("change", ()=>{
+    checkReadFileReadyStatus();
+});
+
+readBtn.addEventListener("click", readFile);
+translateBtn.addEventListener("click", makeOutput);
+
+function fileSelected(e){
+    const fp = finp.files[0];
+    filenameSpan.textContent = fp.name;
+    checkReadFileReadyStatus();
+}
+
+function readFile(e){
+    if(readBtn.classList.contains("disabled"))
+        return;
+
+    const fp = finp.files[0];
+    reader.readAsText(fp);
+    readBtn.style.display = "none";
+    srcProj.parentElement.style.display = "block";
+    translateBtn.style.display = "inline-block";
+}
+
+function checkReadFileReadyStatus(e){
+    if(finp.files.length > 0 && separator.value != "default")
+        readBtn.classList.remove("disabled");
+}
+
+function checkTranslateReadyStatus(e){
+    let other = e.target == srcProj ? destProj : srcProj;
+    if(srcProj.value == destProj.value){
+        other.selectedIndex = 0;
+        translateBtn.classList.add("disabled");
+        return;
+    }
+    if(srcProj.value != "default" && destProj.value != "default")
+        translateBtn.classList.remove("disabled");
+}
+
+function parseFile(raw){
+    let breakChar = "\n";
+    const crlf = raw.match(/\r\n/g);
+    const lf = raw.match(/\n/g);
+    if(crlf && lf){
+        if(crlf.length >= lf.length){ // Probably dos fmt
+          breakChar = "\r\n";
+      }
+    }
+    const sepchar = separator.value === "default" ? "\t" : separator.value;
+    const lines = raw.split(breakChar).slice(0,-1);
+    const inCoords = lines.map(line => {
+        let tokens = line.split(sepchar);
+        let pair = [tokens[0], tokens.slice(-1)];
+        return pair.map(c => parseFloat(c));
+    });
+    return inCoords;
+}
+
+function makeInCoordsTable(inCoords){
+    let orderTable = document.createElement("table");
+    orderTable.id = inTableId;
+    orderTable.innerHTML = `
+      <caption>Input coordinates</caption>
+      <thead><tr><th class="x in-head">x</th><th class="y in-head">y</th></tr></thead>
+      <tbody></tbody>
+    `;
+
+    let heads = orderTable.querySelectorAll("th.in-head");
+    for(const head of heads){
+        head.setAttribute("draggable", true);
+        head.addEventListener("dragstart", handleDragStart);
+        head.addEventListener("dragenter", handleDragEnter);
+        head.addEventListener("dragleave", handleDragLeave);
+        head.addEventListener("dragend", handleDragEnd);
+        head.addEventListener("dragover", handleDragOver);
+        head.addEventListener("drop", handleDrop);
+    }
+
+    let frag = document.createDocumentFragment();
+    for(const coord of inCoords.slice(0,coordDisplayLimit)){
+        let tr = document.createElement("tr");
+        tr.innerHTML = `<td>${coord[0]}</td><td>${coord[1]}</td>`;
+        frag.append(tr);
+    }
+
+    if(inCoords.length > coordDisplayLimit){
+        let tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td colspan="2" class="surplus">...
+          ${inCoords.length-coordDisplayLimit} more rows ...</td`;
+        frag.append(tr);
+    }
+
+    orderTable.querySelector("tbody").append(frag);
+    document.getElementById("left").append(orderTable);
+}
+
+function makeOutput(e){
+    if(translateBtn.classList.contains("disabled"))
+        return;
+    const outCoords = translateCoords(inCoords);
+    makeOutCoordsTable(outCoords);
+}
+
+function makeOutCoordsTable(outCoords){
+    const coordData = new Blob([outCoords.join('\n').replaceAll(',',separator.value)], {type: "text/plain"});
+    const url = URL.createObjectURL(coordData);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${destProj.value.replace(":","")}_${finp.files[0].name}`;
+    link.textContent = "Output coordinates";
+
+    let previewTable = document.getElementById(outTableId);
+    if(!previewTable){
+        previewTable = document.createElement("table");
+        previewTable.id = outTableId;
+    }
+    previewTable.innerHTML = `
+      <caption></caption>
+      <thead><tr><th>x</th><th>y</th></tr></thead>
+      <tbody></tbody>
+    `;
+
+    previewTable.firstElementChild.append(link);
+
+    let frag = document.createDocumentFragment();
+    for(const coord of outCoords.slice(0, coordDisplayLimit)){
+        let tr = document.createElement("tr");
+        tr.innerHTML = `<td>${coord[0]}</td><td>${coord[1]}</td>`;
+        frag.append(tr);
+    }
+
+    if(outCoords.length > coordDisplayLimit){
+        let tr = document.createElement("tr");
+        tr.innerHTML = `<td colspan="2">... ${outCoords.length-coordDisplayLimit} more rows ...</td`;
+        frag.append(tr);
+    }
+
+    previewTable.querySelector("tbody").append(frag);
+    document.getElementById("right").append(previewTable);
+}
+
+
+function translateCoords(inCoords){
+    const src = srcProj.value;
+    const dest = destProj.value;
+    let xindex = null, yindex = null;
+    const headRow = document.getElementById(inTableId).tHead.children[0];
+    if(headRow.firstElementChild.textContent.startsWith("x")){
+        [xindex, yindex] = [0,1];
+    }else{
+        [xindex, yindex] = [1,0];
+    }
+    const outCoords = inCoords.map(coord => {
+        return proj4(src, dest, [coord[xindex], coord[yindex]]);
+    });
+    return outCoords;
+}
+
+function handleDragStart(e){
+    this.style.opacity = 0.4;
+    srcHead = this.cloneNode(true);
+    prevHead = this;
+    e.dataTransfer.effectAllowed = "move";
+    /* Firefox... */
+    e.dataTransfer.setData('text/html', this.textContent);
+}
+
+function handleDragEnd(e) {
+    this.style.opacity = "1.0";
+    srcHead = null;
+    prevHead = null;
+}
+
+function handleDragEnter(e){
+    if(this == srcHead)
+        return;
+
+    this.classList.add("over");
+
+    let temp = this.textContent;
+    this.textContent = srcHead.textContent;
+    prevHead.textContent = temp;
+    prevHead = this;
+}
+
+function handleDragOver(e){
+    if(e.preventDefault)
+        e.preventDefault();
+
+    e.dataTransfer.dropEffect = 'move';
+    return false;
+}
+
+function handleDragLeave(e){
+    this.classList.remove("over");
+}
+
+function handleDrop(e) {
+    if(e.stopPropagation)
+        e.stopPropagation();
+
+    this.classList.remove("over");
+
+    return false;
+}
+</script>
+</body>
+</html>
