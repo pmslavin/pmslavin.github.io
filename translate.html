@@ -106,6 +106,14 @@ td {
   padding: 0px 12px;
 }
 
+textarea {
+  resize: vertical;
+}
+
+select {
+  font-size: 0.8rem;
+}
+
 .column {
   float: left;
   padding: 24px 40px;
@@ -157,7 +165,7 @@ tr.surplus {
     </div>
   </div>
   <div>
-    <textarea id="coord-input" placeholder="One comma, space, or tab separated coordinate pair per line..." rows="6" cols="36"></textarea>
+    <textarea id="coord-input" placeholder="One comma, space, or tab separated coordinate pair per line..." rows="6" cols="40"></textarea>
     <div><label id="read-coords" for="coord-input" class="disabled">Read coordinates</label></div>
   </div>
 </div> <!-- panels -->
@@ -295,7 +303,7 @@ function readFile(e){
 }
 
 function readCoordInput(e){
-    inCoords = parseFile(coordInput.value.replaceAll(" ", "\t").replaceAll(",", "\t") + "\n");
+    inCoords = parseFile(coordInput.value.replaceAll(" ", "\t").replaceAll(",", "\t"));
     makeInCoordsTable(inCoords);
     srcProj.parentElement.style.display = "block";
     translateBtn.style.display = "inline-block";
@@ -335,7 +343,8 @@ function parseFile(raw){
       }
     }
     const sepchar = separator.value === "default" ? "\t" : separator.value;
-    const lines = raw.split(breakChar).slice(0,-1);
+    raw = raw.endsWith(breakChar) ? raw.slice(0,-1) : raw;
+    const lines = raw.split(breakChar);
     const inCoords = lines.map(line => {
         let tokens = line.split(sepchar);
         let pair = [tokens[0], tokens.slice(-1)];
