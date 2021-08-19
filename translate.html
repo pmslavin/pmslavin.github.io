@@ -303,6 +303,9 @@ function readFile(e){
 }
 
 function readCoordInput(e){
+    if(coordReadBtn.classList.contains("disabled"))
+        return;
+
     inCoords = parseFile(coordInput.value.replaceAll(" ", "\t").replaceAll(",", "\t"));
     makeInCoordsTable(inCoords);
     srcProj.parentElement.style.display = "block";
@@ -416,6 +419,8 @@ function makeOutput(e){
     if(translateBtn.classList.contains("disabled"))
         return;
     const outCoords = translateCoords(inCoords);
+    if(!outCoords || outCoords.length == 0)
+        return;
     makeOutCoordsTable(outCoords);
 }
 
@@ -466,14 +471,20 @@ function translateCoords(inCoords){
     const src = srcProj.value;
     const dest = destProj.value;
     let xindex = null, yindex = null;
+    let outCoords = null;
     const headRow = document.getElementById(inTableId).tHead.children[0];
     if(headRow.firstElementChild.textContent.startsWith("x")){
         [xindex, yindex] = [0,1];
     }else{
         [xindex, yindex] = [1,0];
     }
-    const outCoords = inCoords.map(coord => {
-        return proj4(src, dest, [coord[xindex], coord[yindex]]);
+    outCoords = inCoords.map(coord => {
+        try{
+            return proj4(src, dest, [coord[xindex], coord[yindex]]);
+        }catch(TypeError){
+            console.error("Invalid coordinate:", coord);
+            return [`Invalid (${coord[0]})`, `Invalid (${coord[1]})`];
+        }
     });
     return outCoords;
 }
