@@ -273,7 +273,7 @@ destProj.append(frag);
 srcProj.addEventListener("change", checkTranslateReadyStatus);
 destProj.addEventListener("change", checkTranslateReadyStatus);
 
-reader.addEventListener("load", (e) =>{
+reader.addEventListener("load", (e)=>{
     inCoords = parseFile(e.target.result);
     makeInCoordsTable(inCoords);
 });
@@ -418,14 +418,20 @@ function makeInCoordsTable(inCoords){
 function makeOutput(e){
     if(translateBtn.classList.contains("disabled"))
         return;
-    const outCoords = translateCoords(inCoords);
-    if(!outCoords || outCoords.length == 0)
-        return;
-    makeOutCoordsTable(outCoords);
+    translateBtn.textContent = "Calculating...";
+    translateBtn.style.cursor = "wait";
+    setTimeout(()=>{
+        let outCoords = translateCoords(inCoords);
+        translateBtn.textContent = "Translate";
+        translateBtn.style.cursor = "pointer";
+        if(!outCoords || outCoords.length == 0)
+            return;
+        setTimeout(makeOutCoordsTable, 0, outCoords);
+    }, 0);
 }
 
 function makeOutCoordsTable(outCoords){
-    const coordData = new Blob([outCoords.join('\n').replaceAll(',',separator.value)], {type: "text/plain"});
+    const coordData = new Blob([outCoords.join('\n', separator.value)], {type: "text/plain"});
     if(url){
         URL.revokeObjectURL(url);
     }
