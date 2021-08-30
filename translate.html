@@ -128,6 +128,14 @@ tr.surplus {
   text-align: center;
 }
 
+.error-log {
+  color: white;
+  background-color: #C02020;
+  border-radius: 5px;
+  margin-left: 8px;
+  padding: 4px;
+}
+
 #filename {
   display: inline-block;
 }
@@ -222,11 +230,12 @@ proj4.defs(
 const coordDisplayLimit = 32000;
 const inTableId = "order-table";
 const outTableId = "preview-table";
-const reader = new FileReader();
 let url = null; // ObjectURL for coord download
 let srcHead = null;
 let prevHead = null;
-let inCoords = null;
+let inCoords = [];
+let breakChar = "\n";
+let errorLog = null;
 
 const finp = document.getElementById("file-input");
 const filenameSpan = document.getElementById("filename");
@@ -273,33 +282,21 @@ destProj.append(frag);
 srcProj.addEventListener("change", checkTranslateReadyStatus);
 destProj.addEventListener("change", checkTranslateReadyStatus);
 
-reader.addEventListener("load", (e)=>{
-    inCoords = parseFile(e.target.result);
-    makeInCoordsTable(inCoords);
-});
-
 separator.addEventListener("change", ()=>{
     checkReadFileReadyStatus();
 });
 
-readBtn.addEventListener("click", readFile);
+readBtn.addEventListener("click", e=>{
+    setTimeout(processFile, 0);
+    readBtn.textContent = "Reading...";
+    readBtn.style.cursor = "wait";
+});
 translateBtn.addEventListener("click", makeOutput);
 
 function fileSelected(e){
     const fp = finp.files[0];
     filenameSpan.textContent = fp.name;
     checkReadFileReadyStatus();
-}
-
-function readFile(e){
-    if(readBtn.classList.contains("disabled"))
-        return;
-
-    const fp = finp.files[0];
-    reader.readAsText(fp);
-    readBtn.style.display = "none";
-    srcProj.parentElement.style.display = "block";
-    translateBtn.style.display = "inline-block";
 }
 
 function readCoordInput(e){
@@ -454,6 +451,13 @@ function makeOutCoordsTable(outCoords){
     `;
 
     previewTable.firstElementChild.append(link);
+    if(errorLog && errorLog.length > 0){
+        let s = document.createElement("span");
+        s.classList.add("error-log");
+        const plural = errorLog.length > 1 ? "s" : "";
+        s.textContent = `${errorLog.length} error${plural} reported`;
+        previewTable.firstElementChild.append(s);
+    }
 
     let frag = document.createDocumentFragment();
     for(const coord of outCoords.slice(0, coordDisplayLimit)){
@@ -478,21 +482,76 @@ function translateCoords(inCoords){
     const dest = destProj.value;
     let xindex = null, yindex = null;
     let outCoords = null;
+    errorLog = [];
     const headRow = document.getElementById(inTableId).tHead.children[0];
     if(headRow.firstElementChild.textContent.startsWith("x")){
         [xindex, yindex] = [0,1];
     }else{
         [xindex, yindex] = [1,0];
     }
-    outCoords = inCoords.map(coord => {
+    outCoords = inCoords.map((coord, idx) => {
         try{
             return proj4(src, dest, [coord[xindex], coord[yindex]]);
         }catch(TypeError){
             console.error("Invalid coordinate:", coord);
+            errorLog.push({line: idx+1, x: coord[xindex], y: coord[yindex]});
             return [`Invalid (${coord[0]})`, `Invalid (${coord[1]})`];
         }
     });
     return outCoords;
+}
+
+
+function processFile(e){
+    if(readBtn.classList.contains("disabled"))
+        return;
+    let t0 = Date.now();
+    (async function(){
+        const file = finp.files[0];
+        if(!file)
+            return;
+        const fileStream = file.stream();
+        const reader = fileStream.getReader();
+        let readTotal = 0;
+        for await(let lineChunk of streamLines(reader)){
+            readTotal += lineChunk.length;
+            for(let line of lineChunk.split(breakChar).slice(0,-1)){
+                inCoords.push(line.split("\t").map(c => parseFloat(c)));
+            }
+        }
+        makeInCoordsTable(inCoords);
+        readBtn.style.display = "none";
+        srcProj.parentElement.style.display = "block";
+        translateBtn.style.display = "inline-block";
+    })();
+}
+
+
+async function* streamLines(reader){
+    const decoder = new TextDecoder("utf-8");
+    let first = true;
+    let trail = "";
+    while(true){
+        const {done, value} = await reader.read();
+        if(done){
+            break;
+        }else{
+            let chunk = decoder.decode(value, {stream: true});
+            if(first){
+                const crlf = chunk.match(/\r\n/g);
+                const lf = chunk.match(/\n/g);
+                if(crlf && lf){
+                    if(crlf.length >= lf.length){
+                      breakChar = "\r\n";
+                  }
+                }
+                first = false;
+            }
+            let lineEnd = chunk.lastIndexOf(breakChar);
+            yield trail+chunk.slice(0, lineEnd+breakChar.length);
+            trail = chunk.slice(lineEnd+breakChar.length);
+        }
+    }
 }
 
 /*  Coordinate orientation headers
