@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<meta charset="UTF-8">
+<html lang="en">
+<head><link rel="icon" href="data:,"></head>
+<style>
+body {
+  font-size: 0.8rem;
+}
+
+label {
+  background-color: #7F9CCB;
+  padding: 5px 10px;
+  border-radius: 5px;
+  border: 1px ridge black;
+  height: auto;
+  margin: 2px 0;
+  display: inline-block;
+}
+
+input[type=file] {
+  padding: 8px;
+  width: 8px;
+  opacity: 0;
+}
+
+.faded {
+  opacity: 0.12;
+}
+
+.noderow {
+  height: 24px;
+  font-size: x-small;
+  margin-right: 16px;
+}
+#legend {
+  display: inline-block;
+  vertical-align: top;
+  border-radius: 8px;
+  border: 1px solid black;
+  cursor: pointer;
+}
+
+#legend ul {
+  list-style: none;
+  padding-left: 18px;
+}
+
+#legend li {
+  display: flex;
+  justify-content: space-between;
+}
+
+</style>
+<script src="https://unpkg.com/d3@7.0.1/dist/d3.min.js"></script>
+<body>
+    <div>
+      <label for="file-input">Select file</label>
+      <span id="filename">No file selected...</label>
+      <input id="file-input" type="file">
+    </div>
+    <div id="display">
+    <svg id="view" width="1400px" height="900px">
+    </svg>
+    </div>
+</body>
+<script>
+const finp = document.getElementById("file-input");
+finp.addEventListener("change", processFile);
+
+const svgNS = "http://www.w3.org/2000/svg";
+let node = null;
+let link = null;
+let sim = null;
+let nodeCounts = null;
+let nodeRank = null;
+let nodeIcons = null;
+let netSize = null;
+
+
+async function processFile(event){
+    let fp = event.target.files[0];
+    document.getElementById("filename").textContent = fp.name;
+    const src = await fp.text();
+    const net = JSON.parse(src);
+    nodeRank = profileNetwork(net);
+    nodeIcons = genIcons(nodeRank.length);
+    renderNetwork(net);
+}
+
+function profileNetwork(net){
+    nodeCounts = new Map();
+    net.nodes.forEach(n => {
+        if(nodeCounts.has(n.type)){
+            nodeCounts.set(n.type, nodeCounts.get(n.type)+1);
+        }else{
+            nodeCounts.set(n.type, 1)
+        };
+    });
+    console.log(nodeCounts);
+
+    netSize = [...nodeCounts.values()].reduce((a,b) => a+b, 0);
+    let nodeRank = [...nodeCounts.entries()].sort((a,b) => b[1] - a[1]);
+    return nodeRank.map(n => n[0]);
+}
+
+function makeHslPalette(count){
+    let cols = [];
+    const step = Math.trunc(360/count);
+    for(let i=0; i<count; i++){
+        let hue = i*step;
+        cols.push(`hsl(${hue}deg, 80%, 40%)`);
+    }
+    return cols;
+}
+
+function genIcons(count){
+    const icons = [];
+    const sizeMin = 10;
+    const sizeMax = 20;
+    const rgbMax = 0xE0;
+    randRange = () => Math.floor(sizeMin + Math.random()*(sizeMax-sizeMin));
+    const cols = makeHslPalette(count);
+    console.log("cols", cols);
+    for(let i=0; i<count; i++){
+        let icon = null;
+        let col = [1,2,3].map(i => Math.floor(Math.random()*rgbMax))
+        let dim = randRange();
+        switch(i%3){
+            case 0:
+            case 1:
+            case 2:
+                icon = document.createElementNS(svgNS, "circle");
+                icon.setAttribute("r", Math.floor(randRange()/Math.log10(netSize)));
+                icon.style.fill = cols[i];
+                icons.push(icon);
+                break;
+                /*
+            case 1:
+                icon = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                icon.setAttribute("width", dim);
+                icon.setAttribute("height", dim);
+                icon.style.fill = `rgb(${col.join(",")})`;
+                icons.push(icon);
+                break;
+            case 2:
+                icon = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                icon.setAttribute("width", dim);
+                icon.setAttribute("height", dim);
+                icon.style.fill = `rgb(${col.join(",")})`;
+                //icon.setAttribute("transform", "rotate(45)");
+                icons.push(icon);
+                break;
+                */
+        }
+    }
+    return icons;
+}
+
+function getNodeIcon(nodeName){
+    let rank = nodeRank.indexOf(nodeName);
+    return nodeIcons[rank].cloneNode(false);
+}
+
+
+function makeLegend(){
+    const legendCont = document.getElementById("display");
+    let frag = document.createDocumentFragment();
+    let legend = document.createElement("div");
+    legend.id = "legend";
+    let typeList = document.createElement("ul");
+    for(let nodeType of nodeCounts.keys()){
+        let nodeRow = document.createElement("li");
+        nodeRow.classList.add("noderow");
+        nodeRow.classList.add(nodeType);
+        nodeRow.textContent = nodeType;
+        let rowsvg = document.createElementNS(svgNS, "svg");
+        rowsvg.setAttribute("width", "16px");
+        rowsvg.setAttribute("height", "16px");
+        rowsvg.style.verticalAlign = "middle";
+        let icon = getNodeIcon(nodeType);
+        icon.setAttribute("cx", 8);
+        icon.setAttribute("cy", 8);
+        rowsvg.append(icon);
+        nodeRow.append(rowsvg);
+        typeList.append(nodeRow);
+    }
+    handleHighlight = e => {
+        if(e.target.tagName === "UL")
+            return
+
+        let liSrc = null;
+        if(e.target.tagName === "LI"){
+            liSrc = e.target;
+        }else if(e.target.tagName === "svg"){
+            liSrc = e.target.parentElement;
+        }else if(e.target.tagName === "circle"){
+            liSrc = e.target.parentElement.parentElement;
+        }
+
+        const typeName = liSrc.textContent;
+        let nodes = document.querySelectorAll(`svg#view > g >:is(circle,line):not(.${typeName})`);
+        let types = typeList.querySelectorAll(`li:not(.${typeName})`);
+        [...nodes, ...types].forEach(n => n.classList.toggle("faded"));
+    };
+    typeList.addEventListener("mouseover", handleHighlight);
+    typeList.addEventListener("mouseout", handleHighlight);
+
+    legend.append(typeList);
+    legendCont.insertBefore(legend, legendCont.firstElementChild);
+}
+
+function renderNetwork(net){
+    console.log("renderNetwork()", net);
+    makeLegend();
+    const linkDistance = 100;
+    let svg = d3.select("svg#view");
+
+    graphLinks = net.edges.map(e => {return {source: e[0], target: e[1]}});
+
+    sim = d3.forceSimulation()
+            .force("link", d3.forceLink().id(d => d.name).distance(linkDistance/Math.log(netSize)))
+            .force("charge", d3.forceManyBody().strength(-2))
+            .force("collide", d3.forceCollide().radius(8))
+            .force("center", d3.forceCenter(700, 450).strength(1))
+            .stop();
+
+
+    link = svg.append("g")
+                  .attr("id", "links")
+                  .selectAll("line")
+                  .data(graphLinks)
+                  .enter()
+                  .append("line")
+                  .attr("stroke", "grey");
+
+    node = svg.append("g")
+                  .attr("id", "nodes")
+                  .selectAll("circle rect")
+                  .data(net.nodes)
+                  .enter()
+                  .append(d => getNodeIcon(d.type))
+                  .attr("class", d => `node ${d.type}`)
+                  .call(d3.drag()
+                      .on("start", dragstart)
+                      .on("drag", dragging)
+                      .on("end", dragend)
+                  );
+
+
+    sim.nodes(net.nodes)
+       .on("tick", tickFunc)
+       .alpha(0.9)
+       .alphaDecay(0.008)
+       .restart();
+
+    sim.force("link").links(graphLinks);
+}
+
+function tickFunc(){
+    link.attr("x1", d => {/*console.log(d)*/ ; return d.source.x});
+    link.attr("y1", d => d.source.y);
+    link.attr("x2", d => d.target.x);
+    link.attr("y2", d => d.target.y);
+
+    node.attr("cx", d => {/*console.log(d);*/ return d.x});
+    node.attr("cy", d => d.y);
+}
+
+function dragstart(e, d){
+    sim.alpha(0.08).alphaDecay(0.01).restart();
+}
+
+function dragging(e, d){
+    d.fx = e.x;
+    d.fy = e.y;
+}
+
+function dragend(e, d){
+    d.fx = e.x;
+    d.fy = e.y;
+}
+
+function getNodeByName(nodes, name){
+    for(const node of nodes){
+        if(node.name == name)
+            return node;
+    }
+}
+
+</script>
+</body>
+</html>
