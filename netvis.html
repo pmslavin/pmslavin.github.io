@@ -80,10 +80,18 @@ input[type=file] {
   display: inline-block;
 }
 
+#load {
+  margin-left: 8px;
+}
+
+#load p.desc {
+  font-size: x-small;
+  font-style: italic;
+}
 </style>
 <script src="https://unpkg.com/d3@7.0.1/dist/d3.min.js"></script>
 <body>
-    <div>
+    <div id="load">
       <label for="file-input">Select file</label>
       <span id="filename">No file selected...</label>
       <input id="file-input" type="file">
@@ -99,24 +107,26 @@ input[type=file] {
 </body>
 <script>
 const finp = document.getElementById("file-input");
-finp.addEventListener("change", processFile);
-
 const svgNS = "http://www.w3.org/2000/svg";
 const tt = document.getElementById("tooltip");
+
 let node = null;
 let link = null;
 let sim = null;
+
 let nodeCounts = null;
 let nodeRank = null;
 let nodeIcons = null;
 let netSize = null;
 
+finp.addEventListener("change", processFile);
 
 async function processFile(event){
     let fp = event.target.files[0];
-    document.getElementById("filename").textContent = fp.name;
+    document.getElementById("filename").textContent = `Reading ${fp.name}...`;
     const src = await fp.text();
     const net = JSON.parse(src);
+    makeSummary(net);
     nodeRank = profileNetwork(net);
     nodeIcons = genIcons(nodeRank.length);
     renderNetwork(net);
@@ -138,6 +148,27 @@ function profileNetwork(net){
     return nodeRank.map(n => n[0]);
 }
 
+function makeSummary(net){
+    const title = net.metadata.title || "Untitled network";
+    let description = null;
+    if(net.metadata.description !== undefined){
+        description = net.metadata.description !== "" ? net.metadata.description : null;
+    }
+    const loadDiv = document.getElementById("load");
+    const summary = document.createDocumentFragment();
+    let titleP = document.createElement("p");
+    titleP.classList.add("title");
+    titleP.textContent = title;
+    summary.append(titleP);
+    if(description){
+        let descP = document.createElement("p");
+        descP.classList.add("desc");
+        descP.textContent = description;
+        summary.append(descP);
+    }
+    loadDiv.replaceChildren(summary);
+}
+
 function makeHslPalette(count){
     let cols = [];
     const step = Math.trunc(360/count);
@@ -153,46 +184,22 @@ function genIcons(count){
     const sizeMin = 10;
     const sizeMax = 20;
     randRange = () => Math.floor(sizeMin + Math.random()*(sizeMax-sizeMin));
+    let icon = null;
     const cols = makeHslPalette(count);
-    for(let i=0; i<count; i++){
-        let icon = null;
-        if(i === 0){
-                icon = document.createElementNS(svgNS, "circle");
-                const r = Math.floor(randRange()/Math.log10(netSize));
-                icon.setAttribute("r", r/2);
-                icon.style.strokeWidth = Math.floor(r/3);;
-                icon.style.stroke = cols[i];
-                icon.style.fill = "#FFFFFF";
-                icons.push(icon);
-            continue;
-        }
-        switch(i%3){
-            case 0:
-            case 1:
-            case 2:
-                icon = document.createElementNS(svgNS, "circle");
-                icon.setAttribute("r", Math.floor(randRange()/Math.log10(netSize)));
-                icon.style.fill = cols[i];
-                icons.push(icon);
-                break;
-                /*
-            case 1:
-                icon = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-                icon.setAttribute("width", dim);
-                icon.setAttribute("height", dim);
-                icon.style.fill = `rgb(${col.join(",")})`;
-                icons.push(icon);
-                break;
-            case 2:
-                icon = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-                icon.setAttribute("width", dim);
-                icon.setAttribute("height", dim);
-                icon.style.fill = `rgb(${col.join(",")})`;
-                //icon.setAttribute("transform", "rotate(45)");
-                icons.push(icon);
-                break;
-                */
-        }
+
+    icon = document.createElementNS(svgNS, "circle");
+    const r = Math.floor(randRange()/Math.log10(netSize));
+    icon.setAttribute("r", r/2);
+    icon.style.strokeWidth = Math.floor(r/3);;
+    icon.style.stroke = cols[0];
+    icon.style.fill = "#FFFFFF";
+    icons.push(icon);
+
+    for(let i=1; i<count; i++){
+        icon = document.createElementNS(svgNS, "circle");
+        icon.setAttribute("r", Math.floor(randRange()/Math.log10(netSize)));
+        icon.style.fill = cols[i];
+        icons.push(icon);
     }
     return icons;
 }
@@ -213,7 +220,6 @@ function makeLegend(){
         let nodeRow = document.createElement("li");
         nodeRow.classList.add("noderow");
         nodeRow.classList.add(nodeType);
-        //nodeRow.textContent = `${nodeType} (${nodeCounts.get(nodeType)})`;
         nodeRow.textContent = nodeType;
         let rowsvg = document.createElementNS(svgNS, "svg");
         rowsvg.setAttribute("width", "16px");
@@ -274,9 +280,8 @@ function renderNetwork(net){
                   .enter()
                   .append(d => getNodeIcon(d.type))
                   .attr("class", d => `node ${d.type}`)
-                  //.on("pointerover", (e,d) => {setTimeout(()=> displayTooltip(e,d),1000)})
                   .on("mouseover", displayTooltip)
-                  .on("pointerout", () => { tt.classList.add("hidden");})
+                  .on("mouseout", () => { tt.classList.add("hidden");})
                   .call(d3.drag()
                       .on("start", dragstart)
                       .on("drag", dragging)
