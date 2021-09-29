@@ -38,6 +38,7 @@ input[type=file] {
   border-radius: 8px;
   border: 1px solid black;
   cursor: pointer;
+  box-shadow: 4px 4px 8px rgba(0,0,0,0.3);
 }
 
 #legend ul {
@@ -48,6 +49,35 @@ input[type=file] {
 #legend li {
   display: flex;
   justify-content: space-between;
+}
+
+#legend svg {
+  pointer-events: none;
+  margin-left: 8px;
+}
+
+#tooltip {
+  font-size: x-small;
+  position: absolute;
+  background-color: #FBFBFB;
+  border-radius: 4px;
+  border: 1px ridge black;
+  padding: 0px 6px;
+  box-shadow: 4px 4px 8px rgba(0,0,0,0.3);
+}
+
+#tooltip.hidden {
+  display: none;
+}
+
+#tooltip label{
+  color: grey;
+  background-color: inherit;
+  padding: 1px 2px;
+  border-radius: 4px;
+  border: none;
+  height: auto;
+  display: inline-block;
 }
 
 </style>
@@ -62,12 +92,17 @@ input[type=file] {
     <svg id="view" width="1400px" height="900px">
     </svg>
     </div>
+    <div id="tooltip" class="hidden">
+      <label>Name:</label><span class="name"></span><br/>
+      <label>Type:</label><span class="type"></span>
+    </div>
 </body>
 <script>
 const finp = document.getElementById("file-input");
 finp.addEventListener("change", processFile);
 
 const svgNS = "http://www.w3.org/2000/svg";
+const tt = document.getElementById("tooltip");
 let node = null;
 let link = null;
 let sim = null;
@@ -117,14 +152,20 @@ function genIcons(count){
     const icons = [];
     const sizeMin = 10;
     const sizeMax = 20;
-    const rgbMax = 0xE0;
     randRange = () => Math.floor(sizeMin + Math.random()*(sizeMax-sizeMin));
     const cols = makeHslPalette(count);
-    console.log("cols", cols);
     for(let i=0; i<count; i++){
         let icon = null;
-        let col = [1,2,3].map(i => Math.floor(Math.random()*rgbMax))
-        let dim = randRange();
+        if(i === 0){
+                icon = document.createElementNS(svgNS, "circle");
+                const r = Math.floor(randRange()/Math.log10(netSize));
+                icon.setAttribute("r", r/2);
+                icon.style.strokeWidth = Math.floor(r/3);;
+                icon.style.stroke = cols[i];
+                icon.style.fill = "#FFFFFF";
+                icons.push(icon);
+            continue;
+        }
         switch(i%3){
             case 0:
             case 1:
@@ -172,6 +213,7 @@ function makeLegend(){
         let nodeRow = document.createElement("li");
         nodeRow.classList.add("noderow");
         nodeRow.classList.add(nodeType);
+        //nodeRow.textContent = `${nodeType} (${nodeCounts.get(nodeType)})`;
         nodeRow.textContent = nodeType;
         let rowsvg = document.createElementNS(svgNS, "svg");
         rowsvg.setAttribute("width", "16px");
@@ -188,16 +230,8 @@ function makeLegend(){
         if(e.target.tagName === "UL")
             return
 
-        let liSrc = null;
-        if(e.target.tagName === "LI"){
-            liSrc = e.target;
-        }else if(e.target.tagName === "svg"){
-            liSrc = e.target.parentElement;
-        }else if(e.target.tagName === "circle"){
-            liSrc = e.target.parentElement.parentElement;
-        }
+        const typeName = e.target.textContent;
 
-        const typeName = liSrc.textContent;
         let nodes = document.querySelectorAll(`svg#view > g >:is(circle,line):not(.${typeName})`);
         let types = typeList.querySelectorAll(`li:not(.${typeName})`);
         [...nodes, ...types].forEach(n => n.classList.toggle("faded"));
@@ -240,6 +274,9 @@ function renderNetwork(net){
                   .enter()
                   .append(d => getNodeIcon(d.type))
                   .attr("class", d => `node ${d.type}`)
+                  //.on("pointerover", (e,d) => {setTimeout(()=> displayTooltip(e,d),1000)})
+                  .on("mouseover", displayTooltip)
+                  .on("pointerout", () => { tt.classList.add("hidden");})
                   .call(d3.drag()
                       .on("start", dragstart)
                       .on("drag", dragging)
@@ -266,8 +303,17 @@ function tickFunc(){
     node.attr("cy", d => d.y);
 }
 
+function displayTooltip(e, d){
+    const rect = e.target.getBoundingClientRect();
+    tt.querySelector("span.name").textContent = d.name;
+    tt.querySelector("span.type").textContent = d.type;
+    tt.style.left = `${rect.right+2}px`;
+    tt.style.top = `${rect.top-4}px`;
+    tt.classList.remove("hidden");
+}
+
 function dragstart(e, d){
-    sim.alpha(0.08).alphaDecay(0.01).restart();
+    sim.alpha(0.06).alphaDecay(0.01).restart();
 }
 
 function dragging(e, d){
