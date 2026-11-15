@@ -1,0 +1,29 @@
+version: 1
+project:
+  title: Overview
+  authors:
+    - name: Paul Slavin
+      orcid: 0009-0009-5499-2096
+      affiliations:
+        - name: The University of Manchester
+          url: https://www.manchester.ac.uk
+        - name: Department of Computer Science
+          url: https://www.cs.manchester.ac.uk
+      email: paul.slavin@manchester.ac.uk
+  github: https://github.com/pmslavin
+  license: CC-BY-NC-4.0
+  edit_url: null
+  toc:
+    - file: index.md
+    - file: projects.md
+    - file: research.md
+    - file: events.md
+    - file: teaching.md
+    - file: other.md
+      children:
+        - file: software.md
+        - file: errata.md
+site:
+  title: "Paul Slavin - The University of Manchester"
+  options:
+    logo_text: Dr Paul M. Slavin
