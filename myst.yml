@@ -27,5 +27,6 @@ site:
   title: "Paul Slavin - The University of Manchester"
   template: book-theme
   url: https://pmslavin.github.io
+  robots: allow
   options:
     logo_text: Dr Paul M. Slavin
