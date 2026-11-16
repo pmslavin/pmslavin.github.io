@@ -1,6 +1,7 @@
 version: 1
 project:
   title: Overview
+  url: https://pmslavin.github.io
   authors:
     - name: Paul Slavin
       orcid: 0009-0009-5499-2096
@@ -25,5 +26,6 @@ project:
         - file: errata.md
 site:
   title: "Paul Slavin - The University of Manchester"
+  template: book-theme
   options:
     logo_text: Dr Paul M. Slavin
