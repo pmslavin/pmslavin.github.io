@@ -8,6 +8,7 @@ and the [projects](projects.md) I participate in.
 | Date | Event | Location | Notes |
 | :-- | :-- | :-- | :-- |
 | 2027 | CDIF4EOSC All-Hands | Sopot | |
+| 2027 | IDCC | Lisbon | CDIF & RO-Crate Workshop |
 | 2027 | CA4EOSC General Assembly | Athens | |
 | 2027 | CDIF4EOSC Validation Workshop | Athens | |
 | 2026 | CODATA Data Quality Workshop | Paris | |
