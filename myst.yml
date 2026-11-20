@@ -23,6 +23,8 @@ project:
       children:
         - file: software.md
         - file: errata.md
+  static_files:
+    - google324ca328a5653aec.html
 site:
   title: "Paul Slavin - The University of Manchester"
   template: book-theme
