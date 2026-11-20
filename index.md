@@ -1,5 +1,3 @@
-```{anywidget} ./html_meta.mjs
-```
 # Overview
 
 ---
