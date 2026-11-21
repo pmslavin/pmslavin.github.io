@@ -32,3 +32,4 @@ site:
     logo_text: Dr Paul M. Slavin
     url: https://pmslavin.github.io
     robots: allow
+    favicon: img/favicon.ico
